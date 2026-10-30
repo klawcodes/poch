@@ -1,6 +1,5 @@
 //! Layout & ukuran bersama (dipakai semua fitur).
 
-// ---------------------------------------------------------------- config
 pub(crate) const W: i32 = 540;
 pub(crate) const H: i32 = 192; // +12 px ruang transparan untuk gelombang saat drop
 pub(crate) const EXP_W: f32 = 500.0;
@@ -23,3 +22,10 @@ pub(crate) const ACCENT: [u8; 3] = [255, 69, 58];
 // lalu riak merambat dari tengah ke kiri-kanan sambil meredam.
 pub(crate) const DROP_ANIM_SECS: f32 = 1.6;
 pub(crate) const DROP_AMP: f32 = 22.0;
+
+// Crystal glass look: light dark tint, brighter top sheen, nested panel tint.
+pub(crate) const GLASS_ALPHA: f32 = 0.52;
+pub(crate) const GLASS_SHEEN: f32 = 0.18;
+pub(crate) const GLASS_PANEL: f32 = 0.30;
+// DWM blur-behind stacks a second, thick blur on top of the one in glass.rs, so it is off.
+pub(crate) const GLASS_BLUR: bool = false;

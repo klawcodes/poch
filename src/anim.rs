@@ -2,7 +2,6 @@
 
 use super::*;
 
-// ---------------------------------------------------------------- animation
 pub(crate) fn target(a: &App) -> (f32, f32) {
     if a.expanded() {
         (EXP_W, EXP_H)

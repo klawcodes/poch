@@ -17,7 +17,6 @@ pub(crate) const SH_H: f32 = 100.0;
 
 const ICON_PX: i32 = 48;
 
-// ---------------------------------------------------------------- shelf data
 pub(crate) struct ShelfItem {
     pub(crate) path: String,
     pub(crate) name: String,
@@ -182,7 +181,7 @@ impl App {
                 CX + ox,
                 SH_Y + SH_H / 2.0 - 9.0,
                 13.0,
-                [170, 120, 118],
+                [140, 140, 145],
                 al,
                 300.0,
                 false,
@@ -195,7 +194,6 @@ impl App {
             let it = &self.shelf[i];
             let cx = tx + SH_W / 2.0;
 
-            // Ikon berwarna dari shell Windows.
             if let Some(ic) = &it.icon {
                 let ix = (cx - ic.width() as f32 / 2.0).round() as i32;
                 let iy = (SH_Y + 10.0) as i32;

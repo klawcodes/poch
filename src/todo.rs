@@ -100,8 +100,9 @@ impl App {
             g.line(cx - 3.6, cy + 0.4, cx - 1.0, cy + 3.0, 1.9, &wh);
             g.line(cx - 1.0, cy + 3.0, cx + 3.8, cy - 2.8, 1.9, &wh);
         } else {
-            g.circle(cx, cy, 8.0, &paint(255, 255, 255, 0.32 * al));
-            g.circle(cx, cy, 6.7, &paint(22, 22, 24, al));
+            if let Some(ring) = PathBuilder::from_circle(cx, cy, 7.35) {
+                g.stroke(&ring, &paint(255, 255, 255, 0.32 * al), 1.3);
+            }
         }
         let col = if dn { [150, 150, 150] } else { [242, 242, 242] };
         let tx = x + 33.0;
@@ -164,8 +165,9 @@ impl App {
 
         let (rx, rw, y0, max) = rows_geom(self.editing);
         if self.editing {
-            g.fill(&rrect(LX - 1.0 + ox, 39.0, CW + 2.0, 32.0, 11.0), &acc(0.55 * al));
-            g.fill(&rrect(LX + ox, 40.0, CW, 30.0, 10.0), &paint(26, 26, 29, al));
+            let field = rrect(LX + ox, 40.0, CW, 30.0, 10.0);
+            g.glass_panel(&field, al);
+            g.stroke(&field, &acc(0.55 * al), 1.2);
             let shown: &str = if self.input.is_empty() { "Type a task, Enter to save, Esc to cancel" } else { &self.input };
             let col = if self.input.is_empty() { [120, 120, 125] } else { [255, 255, 255] };
             g.txt(shown, LX + 12.0 + ox, 40.0 + ty(30.0, 13.0), 13.0, col, al, CW - 30.0);

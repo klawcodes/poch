@@ -11,6 +11,30 @@ pub(crate) const MARQUEE_PAUSE: f32 = 1.2;
 
 const ONLINE_ARTWORK: bool = true;
 
+/// Phosphor Icons "music-notes" (fill), lisensi MIT, viewBox 256.
+const NOTE_ICON: &str = "M212.92,17.71a7.89,7.89,0,0,0-6.86-1.46l-128,32A8,8,0,0,0,72,56V166.1A36,36,0,1,0,88,196V102.25l112-28V134.1A36,36,0,1,0,216,164V24A8,8,0,0,0,212.92,17.71Z";
+
+fn note_icon_path() -> Option<&'static Path> {
+    static ICON: std::sync::OnceLock<Option<Path>> = std::sync::OnceLock::new();
+    ICON.get_or_init(|| {
+        use svgtypes::{SimplePathSegment as Seg, SimplifyingPathParser};
+        let mut pb = PathBuilder::new();
+        for seg in SimplifyingPathParser::from(NOTE_ICON).flatten() {
+            match seg {
+                Seg::MoveTo { x, y } => pb.move_to(x as f32, y as f32),
+                Seg::LineTo { x, y } => pb.line_to(x as f32, y as f32),
+                Seg::Quadratic { x1, y1, x, y } => pb.quad_to(x1 as f32, y1 as f32, x as f32, y as f32),
+                Seg::CurveTo { x1, y1, x2, y2, x, y } => {
+                    pb.cubic_to(x1 as f32, y1 as f32, x2 as f32, y2 as f32, x as f32, y as f32)
+                }
+                Seg::ClosePath => pb.close(),
+            }
+        }
+        pb.finish()
+    })
+    .as_ref()
+}
+
 pub(crate) const MX: f32 = LX + 104.0;
 pub(crate) const CLOCK_W: f32 = 124.0; // lebar blok jam di kanan (rata kanan di RX)
 pub(crate) const MW: f32 = RX - CLOCK_W - 6.0 - MX; // kolom teks/kontrol berhenti sebelum blok jam
@@ -48,7 +72,6 @@ fn fmt_time(s: u32) -> String {
     format!("{}:{:02}", s / 60, s % 60)
 }
 
-// ---------------------------------------------------------------- media thread
 fn read_thumbnail(props: &MediaProps) -> Option<Vec<u8>> {
     let r = props.Thumbnail().ok()?;
     let s = r.OpenReadAsync().ok()?.get().ok()?;
@@ -238,7 +261,6 @@ pub(crate) fn media_thread(hwnd: isize, shared: Arc<Mutex<Media>>, art_shared: A
     }
 }
 
-// ---------------------------------------------------------------- artwork tint (colour bleed under the artwork)
 // Two dominant colours are extracted ONCE per artwork (in set_art, from the already decoded 88x88 RGBA that the
 // media thread produced), then cross-faded over TINT_SECS whenever the artwork changes.
 type Pal = [[f32; 3]; 2];
@@ -510,6 +532,15 @@ impl App {
         g.fill(shape, &p);
     }
 
+    fn note_icon(g: &mut Gfx, cx: f32, cy: f32, px: f32, al: f32) {
+        let Some(p) = note_icon_path() else { return; };
+        let k = px / 256.0;
+        let t = Transform::from_scale(k, k).post_translate(cx - px / 2.0, cy - px / 2.0);
+        if let Some(path) = p.clone().transform(t) {
+            g.fill(&path, &paint(150, 150, 160, al));
+        }
+    }
+
     fn art_at(&self, g: &mut Gfx, x: f32, y: f32, size: f32, r: f32, al: f32) {
         let path = rrect(x, y, size, size, r);
         if let Some(art) = &self.art {
@@ -525,12 +556,8 @@ impl App {
             p.anti_alias = true;
             g.fill(&path, &p);
         } else {
-            g.fill(&path, &paint(46, 46, 52, al));
-            let (cx, cy, s) = (x + size / 2.0, y + size / 2.0, size / 88.0);
-            let n = paint(150, 150, 160, al);
-            g.circle(cx - 5.0 * s, cy + 12.0 * s, 7.0 * s, &n);
-            g.rect(cx + 1.0 * s, cy - 18.0 * s, 3.5 * s, 30.0 * s, &n);
-            g.rect(cx + 1.0 * s, cy - 18.0 * s, 13.0 * s, 6.0 * s, &n);
+            g.glass_panel(&path, al);
+            Self::note_icon(g, x + size / 2.0, y + size / 2.0, size * 0.5, al);
         }
     }
 
@@ -538,9 +565,14 @@ impl App {
         g.txt("Now Playing", LX + ox, 14.0, 12.0, [140, 140, 145], al, 200.0);
         self.clock_side(g, RX + ox, al);
         self.art_at(g, LX + ox, 44.0, 88.0, 12.0, al);
-        let title = if self.media.title.is_empty() { "No media" } else { &self.media.title };
+        let empty = self.media.title.is_empty();
+        let title = if empty { "No media" } else { &self.media.title };
         g.txtb(title, MX + ox, 40.0, 17.0, [255, 255, 255], al, MW);
-        g.txt(&self.media.artist, MX + ox, 64.0, 13.0, [170, 170, 175], al, MW);
+        if empty {
+            g.txt("Start music in any app", MX + ox, 64.0, 13.0, [140, 140, 145], al, MW);
+        } else {
+            g.txt(&self.media.artist, MX + ox, 64.0, 13.0, [170, 170, 175], al, MW);
+        }
         if self.media.dur > 0 {
             let fr = (self.media.pos as f32 / self.media.dur as f32).clamp(0.0, 1.0);
             g.fill(&rrect(MX + ox, 96.0, MW, 4.0, 2.0), &paint(255, 255, 255, 0.18 * al));
@@ -552,7 +584,9 @@ impl App {
         }
         let cx = MCX + ox;
         let cy = MCY;
-        let white = paint(255, 255, 255, al);
+        // Tombol redup selama tidak ada media yang bisa dikontrol.
+        let cal = if empty { al * 0.4 } else { al };
+        let white = paint(255, 255, 255, cal);
         let px = cx - 56.0;
         g.poly(&[(px + 6.0, cy - 7.0), (px + 6.0, cy + 7.0), (px - 6.0, cy)], &white);
         g.rect(px - 9.0, cy - 7.0, 2.5, 14.0, &white);
@@ -560,7 +594,7 @@ impl App {
         g.poly(&[(nx - 6.0, cy - 7.0), (nx - 6.0, cy + 7.0), (nx + 6.0, cy)], &white);
         g.rect(nx + 6.5, cy - 7.0, 2.5, 14.0, &white);
         g.circle(cx, cy, 17.0, &white);
-        let blk = paint(0, 0, 0, al);
+        let blk = paint(0, 0, 0, cal);
         if self.media.playing {
             g.rect(cx - 6.0, cy - 7.0, 4.0, 14.0, &blk);
             g.rect(cx + 2.0, cy - 7.0, 4.0, 14.0, &blk);

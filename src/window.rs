@@ -4,9 +4,8 @@ use super::*;
 
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_SHIFT};
 
-// ---------------------------------------------------------------- window
-/// Panic di dalam window procedure (extern "system") akan langsung mematikan proses tanpa pesan.
-/// Dibungkus catch_unwind supaya app tetap hidup; detail panic ditulis ke %APPDATA%\poch\crash.log.
+/// Panic di dalam extern "system" mematikan proses tanpa pesan, jadi dibungkus catch_unwind.
+/// Detail panic ditulis ke %APPDATA%\poch\crash.log.
 pub(crate) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
     match std::panic::catch_unwind(|| wndproc_inner(hwnd, msg, wp, lp)) {
         Ok(r) => r,

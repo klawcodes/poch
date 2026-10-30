@@ -43,7 +43,6 @@ pub(crate) struct NoteView {
     wheel: i32,
 }
 
-// ---------------------------------------------------------------- persistence
 pub(crate) fn load_note() -> String {
     let s = std::fs::read_to_string(data_path("notepad.txt")).unwrap_or_default();
     s.replace("\r\n", "\n").chars().take(NOTE_MAX_CHARS).collect()
@@ -53,7 +52,6 @@ pub(crate) fn save_note(s: &str) {
     write_data("notepad.txt", s.to_string());
 }
 
-// ---------------------------------------------------------------- layout helpers
 fn char_w(g: &mut Gfx, ch: char) -> f32 {
     let mut b = [0u8; 4];
     g.width(ch.encode_utf8(&mut b), NOTE_SIZE)
@@ -182,7 +180,6 @@ fn fmt_num(n: usize) -> String {
     o
 }
 
-// ---------------------------------------------------------------- clipboard
 unsafe fn clip_set(hwnd: HWND, text: &str) {
     if OpenClipboard(hwnd).is_err() {
         return;
@@ -225,7 +222,6 @@ unsafe fn clip_get(hwnd: HWND) -> Option<String> {
     out
 }
 
-// ---------------------------------------------------------------- editing
 impl App {
     /// True when `s` respects the character limit.
     pub(crate) fn note_fits(&mut self, s: &str) -> bool {
@@ -489,7 +485,6 @@ impl App {
         true
     }
 
-    // ------------------------------------------------------------ mouse
     /// Char index under a point (client coordinates).
     fn note_hit(&mut self, x: f32, y: f32) -> usize {
         let cur = self.nv.cur;
@@ -546,7 +541,6 @@ impl App {
         true
     }
 
-    // ------------------------------------------------------------ drawing
     pub(crate) fn slide_note(&self, g: &mut Gfx, ox: f32, al: f32) {
         let x = LX + ox;
         g.txtb(NOTE_NAME, x, 12.0, 15.0, [255, 255, 255], al, 100.0);
@@ -575,14 +569,18 @@ impl App {
             g.txt(hint, RX + ox - hw, 14.0, 12.0, hcol, al, 120.0);
         }
 
-        // sticky-note card: deep red body, a brighter "tape" strip on top
-        g.fill(&rrect(x, NOTE_Y, CW, NOTE_H, 12.0), &acc((if editing { 0.30 } else { 0.18 }) * al));
+        // The accent edge marks the editing state; the tape strip stays as the one accent.
+        let card = rrect(x, NOTE_Y, CW, NOTE_H, 12.0);
+        g.glass_panel(&card, al);
+        if editing {
+            g.stroke(&card, &acc(0.55 * al), 1.2);
+        }
         g.fill(&rrect(x + CW / 2.0 - 22.0, NOTE_Y - 3.0, 44.0, 8.0, 3.0), &acc(0.75 * al));
 
         let tx = x + 14.0;
         if n == 0 {
             if !editing {
-                g.txt("Click to write a note", tx, NOTE_Y + NOTE_TOP, NOTE_SIZE, [190, 130, 128], al, NOTE_W);
+                g.txt("Click to write a note", tx, NOTE_Y + NOTE_TOP, NOTE_SIZE, [140, 140, 145], al, NOTE_W);
             }
             if editing && self.caret_on {
                 g.rect(tx, NOTE_Y + NOTE_TOP + 1.0, 1.5, 15.0, &paint(255, 255, 255, al));
@@ -620,10 +618,9 @@ impl App {
             }
 
             let text: String = chars[s..e].iter().collect();
-            g.txt(&text, tx, y, NOTE_SIZE, [255, 228, 225], al, NOTE_W + 4.0);
+            g.txt(&text, tx, y, NOTE_SIZE, [240, 240, 244], al, NOTE_W + 4.0);
         }
 
-        // caret
         if editing && self.caret_on && slo == shi {
             let li = line_of(&lines, cur);
             if li >= scroll && li < scroll + NOTE_LINES {

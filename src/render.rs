@@ -2,6 +2,61 @@
 
 use super::*;
 
+use crate::config::{GLASS_ALPHA, GLASS_BLUR};
+use std::cell::RefCell;
+use windows::Win32::Graphics::Dwm::{DwmEnableBlurBehindWindow, DWM_BB_BLURREGION, DWM_BB_ENABLE, DWM_BLURBEHIND};
+use windows::Win32::Graphics::Gdi::{CombineRgn, CreateRectRgn, DeleteObject, HGDIOBJ, RGN_OR};
+
+type Rect4 = (i32, i32, i32, i32);
+
+thread_local! {
+    static BLUR_RECTS: RefCell<Vec<Rect4>> = RefCell::new(Vec::new());
+}
+
+/// Rects covering only the pixels the notch fully covers. The blur edge is not anti-aliased,
+/// so it stays 1px inside the shape and hides under the tinted, anti-aliased body edge.
+fn blur_rects(g: &Gfx) -> Vec<Rect4> {
+    let Some(mask) = g.mask.as_ref() else { return Vec::new(); };
+    let data = mask.data();
+    let pw = g.pm.width() as usize;
+    let (x0, y0, x1, y1) = (g.prev_box.0.min(pw), g.prev_box.1, g.prev_box.2.min(pw), g.prev_box.3.min(g.pm.height() as usize));
+    let mut out: Vec<Rect4> = Vec::new();
+    for y in y0..y1 {
+        let row = &data[y * pw + x0..y * pw + x1];
+        let Some(first) = row.iter().position(|&c| c >= 250) else { continue; };
+        let last = row.iter().rposition(|&c| c >= 250).unwrap_or(first);
+        let (l, r) = ((x0 + first) as i32, (x0 + last + 1) as i32);
+        match out.last_mut() {
+            Some(q) if q.0 == l && q.2 == r && q.3 == y as i32 => q.3 += 1,
+            _ => out.push((l, y as i32, r, y as i32 + 1)),
+        }
+    }
+    out
+}
+
+/// Blur-behind only the notch region. Skipped when the region did not change since the last call.
+unsafe fn apply_blur(hwnd: HWND, rects: Vec<Rect4>) {
+    let same = BLUR_RECTS.with(|c| *c.borrow() == rects);
+    if same {
+        return;
+    }
+    let rgn = CreateRectRgn(0, 0, 0, 0);
+    for &(x0, y0, x1, y1) in &rects {
+        let part = CreateRectRgn(x0, y0, x1, y1);
+        CombineRgn(rgn, rgn, part, RGN_OR);
+        let _ = DeleteObject(HGDIOBJ(part.0));
+    }
+    let bb = DWM_BLURBEHIND {
+        dwFlags: DWM_BB_ENABLE | DWM_BB_BLURREGION,
+        fEnable: true.into(),
+        hRgnBlur: rgn,
+        fTransitionOnMaximized: false.into(),
+    };
+    let _ = DwmEnableBlurBehindWindow(hwnd, &bb);
+    let _ = DeleteObject(HGDIOBJ(rgn.0));
+    BLUR_RECTS.with(|c| *c.borrow_mut() = rects);
+}
+
 /// Apply the notch-shape mask, but only over `bx` (cheap even at 60 fps).
 fn apply_mask(g: &mut Gfx, shape: &Path, bx: Box4) {
     let Some(mut mask) = g.mask.take() else { return; };
@@ -123,6 +178,12 @@ pub(crate) fn draw(a: &mut App) {
     };
     let dirty = union_box(g.prev_box, cur);
     g.clear_box(dirty);
+    // FIX: backdrop kaca hanya di-blit ke `cur` (area yang di-mask di bawah), bukan `dirty`.
+    // Kalau di-blit ke `dirty`, sisa area frame sebelumnya (di luar `cur`) berisi persegi
+    // buram opak yang tidak ter-mask, sehingga kaca tampak keluar dari bentuk notch.
+    if crate::glass::refresh(a.hwnd, a.wx) {
+        crate::glass::blit(&mut g.pm, cur);
+    }
     g.prev_box = cur;
     g.dirty = dirty;
 
@@ -130,7 +191,8 @@ pub(crate) fn draw(a: &mut App) {
         Some(t) => notch_wave(w, h, t),
         None => notch_path(w, h),
     };
-    g.fill(&shape, &paint(0, 0, 0, 1.0));
+    // The collapsed pill stays solid black; the glass tint and highlights fade in as the notch expands.
+    g.glass_body(&shape, 1.0 - (1.0 - GLASS_ALPHA) * p, p);
 
     let ca = (1.0 - p * 2.0).clamp(0.0, 1.0) * ((h - 16.0) / 12.0).clamp(0.0, 1.0);
     if ca > 0.03 {
@@ -149,10 +211,6 @@ pub(crate) fn draw(a: &mut App) {
         for &(i, _, al) in &vis {
             match i {
                 0 => a.music_glow(&mut g, &shape, w, h, al),
-                1 => glow(&mut g, &shape, h, (30, 110, 235), 0.40 * al),
-                2 => glow(&mut g, &shape, h, (230, 30, 50), 0.42 * al),
-                3 => glow(&mut g, &shape, h, (230, 30, 50), 0.42 * al),
-                4 => glow(&mut g, &shape, h, (235, 40, 55), 0.50 * al),
                 _ => {}
             }
         }
@@ -207,6 +265,9 @@ pub(crate) unsafe fn present(a: &mut App) {
             d[2] = s[0];
             d[3] = s[3];
         }
+    }
+    if GLASS_BLUR {
+        apply_blur(HWND(a.hwnd as *mut c_void), blur_rects(g));
     }
     let size = SIZE { cx: W, cy: H };
     let src = POINT { x: 0, y: 0 };

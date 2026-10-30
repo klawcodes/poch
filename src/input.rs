@@ -2,7 +2,6 @@
 
 use super::*;
 
-// ---------------------------------------------------------------- input
 pub(crate) unsafe fn click(x: f32, y: f32) {
     with_app(|a| {
         if !a.ready() {
@@ -131,45 +130,5 @@ pub(crate) unsafe fn click(x: f32, y: f32) {
 }
 
 pub(crate) unsafe fn context_menu(hwnd: HWND, goal: u32, remind: u32) -> i32 {
-    let menu = match CreatePopupMenu() {
-        Ok(m) => m,
-        Err(_) => return 0,
-    };
-    let chk = |on: bool| if on { MF_STRING | MF_CHECKED } else { MF_STRING };
-    let _ = AppendMenuW(menu, MF_STRING, 11, w!("Remove 250 ml"));
-    let _ = AppendMenuW(menu, MF_STRING, 10, w!("Reset today's water"));
-    let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-    let goals = [
-        (20usize, w!("Daily goal 1.5 L"), 1500u32),
-        (21, w!("Daily goal 2.0 L"), 2000),
-        (22, w!("Daily goal 2.5 L"), 2500),
-        (23, w!("Daily goal 3.0 L"), 3000),
-    ];
-    for (id, label, v) in goals {
-        let _ = AppendMenuW(menu, chk(goal == v), id, label);
-    }
-    let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-    let rem = [
-        (30usize, w!("Remind every 30 min"), 30u32),
-        (31, w!("Remind every 60 min"), 60),
-        (32, w!("Remind every 90 min"), 90),
-        (33, w!("Reminders off"), 0),
-    ];
-    for (id, label, v) in rem {
-        let _ = AppendMenuW(menu, chk(remind == v), id, label);
-    }
-    let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-    let _ = AppendMenuW(menu, MF_STRING, 1, w!("Exit"));
-
-    let prev_fg = GetForegroundWindow();
-    let mut pt = POINT::default();
-    let _ = GetCursorPos(&mut pt);
-    let _ = SetForegroundWindow(hwnd);
-    let cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd, None);
-    let _ = PostMessageW(hwnd, WM_NULL, WPARAM(0), LPARAM(0));
-    let _ = DestroyMenu(menu);
-    if !prev_fg.0.is_null() && prev_fg != hwnd {
-        let _ = SetForegroundWindow(prev_fg);
-    }
-    cmd.0
+    crate::menu::context_menu(hwnd, goal, remind)
 }

@@ -14,7 +14,6 @@ pub(crate) fn pixmap_from_rgba(rgba: &[u8], size: u32) -> Option<Pixmap> {
     Some(pm)
 }
 
-// ---------------------------------------------------------------- text
 static FONT_REG: &[u8] = include_bytes!("../assets/InstrumentSans-Regular.ttf");
 static FONT_REG_EXT: &[u8] = include_bytes!("../assets/InstrumentSans-Ext-Regular.ttf");
 static FONT_BOLD: &[u8] = include_bytes!("../assets/InstrumentSans-Bold.ttf");
@@ -158,7 +157,6 @@ impl Text {
     }
 }
 
-// ---------------------------------------------------------------- drawing primitives
 /// Pixel box (x0, y0, x1, y1), end-exclusive. Used so we only clear / mask / copy what changed.
 pub(crate) type Box4 = (usize, usize, usize, usize);
 
@@ -177,6 +175,48 @@ pub(crate) struct Gfx {
 }
 
 impl Gfx {
+    /// Frosted glass body: black tint over the blurred backdrop, top sheen, diagonal highlight, rim light.
+    /// `tint` is the overlay opacity; `al` scales the highlights so the idle pill stays plain black.
+    pub(crate) fn glass_body(&mut self, path: &Path, tint: f32, al: f32) {
+        use crate::config::GLASS_SHEEN;
+        self.fill(path, &paint(0, 0, 0, tint));
+        let b = path.bounds();
+        if al <= 0.01 || b.height() < 12.0 {
+            return;
+        }
+        let a8 = |v: f32| (v * al * 255.0).clamp(0.0, 255.0) as u8;
+        let (l, t, w, h) = (b.left(), b.top(), b.width(), b.height());
+        if let Some(p) = white_gradient((0.0, t), (0.0, t + h * 0.6), &[(0.0, a8(GLASS_SHEEN)), (1.0, 0)]) {
+            self.fill(path, &p);
+        }
+        if let Some(p) = white_gradient((l, t), (l + w * 0.6, t + h), &[(0.0, a8(0.10)), (0.55, 0)]) {
+            self.fill(path, &p);
+        }
+        if let Some(p) = white_gradient((0.0, t), (0.0, t + h), &[(0.0, a8(0.42)), (0.5, a8(0.10)), (1.0, a8(0.24))]) {
+            // The top 3 px are skipped so no bright line sits on the screen edge.
+            let mask = Mask::new(W as u32, H as u32).map(|mut m| {
+                if let Some(r) = Rect::from_xywh(0.0, 3.0, W as f32, H as f32) {
+                    m.fill_path(&PathBuilder::from_rect(r), FillRule::Winding, false, Transform::identity());
+                }
+                m
+            });
+            let st = Stroke { width: 1.2, ..Default::default() };
+            self.pm.stroke_path(path, &p, &st, Transform::identity(), mask.as_ref());
+        }
+    }
+
+    /// Nested panel: faint white lift with a hairline that is brighter on top.
+    pub(crate) fn glass_panel(&mut self, path: &Path, al: f32) {
+        use crate::config::GLASS_PANEL;
+        self.fill(path, &paint(255, 255, 255, GLASS_PANEL * al));
+        let b = path.bounds();
+        let a8 = |v: f32| (v * al * 255.0).clamp(0.0, 255.0) as u8;
+        if let Some(p) = white_gradient((0.0, b.top()), (0.0, b.bottom()), &[(0.0, a8(0.22)), (1.0, a8(0.05))]) {
+            let st = Stroke { width: 1.0, ..Default::default() };
+            self.pm.stroke_path(path, &p, &st, Transform::identity(), None);
+        }
+    }
+
     pub(crate) fn clear_box(&mut self, b: Box4) {
         let pw = self.pm.width() as usize;
         let ph = self.pm.height() as usize;
@@ -275,6 +315,15 @@ impl Gfx {
             }
         }
     }
+}
+
+fn white_gradient(p0: (f32, f32), p1: (f32, f32), stops: &[(f32, u8)]) -> Option<Paint<'static>> {
+    let st = stops.iter().map(|&(o, a)| GradientStop::new(o, Color::from_rgba8(255, 255, 255, a))).collect();
+    let shader = LinearGradient::new(Point::from_xy(p0.0, p0.1), Point::from_xy(p1.0, p1.1), st, SpreadMode::Pad, Transform::identity())?;
+    let mut p = Paint::default();
+    p.shader = shader;
+    p.anti_alias = true;
+    Some(p)
 }
 
 pub(crate) fn dummy_path() -> Path {

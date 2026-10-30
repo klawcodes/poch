@@ -49,7 +49,6 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::Shell::{DragFinish, DragQueryFileW, ShellExecuteW, HDROP};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
-// ---------------------------------------------------------------- modul (satu file per fitur)
 mod anim;
 mod busy;
 mod clock;
@@ -58,8 +57,10 @@ mod data;
 mod dragdrop;
 mod eye;
 mod gfx;
+mod glass;
 mod icon;
 mod input;
+mod menu;
 mod music;
 mod nav;
 mod note;
@@ -87,7 +88,6 @@ use todo::{ROW_H, ROW_P, load_todos, rows_geom, save_todos};
 use water::{BX, Water, check_reminder};
 use window::{wndproc};
 
-// ---------------------------------------------------------------- state
 struct App {
     hwnd: isize,
     wx: i32,
